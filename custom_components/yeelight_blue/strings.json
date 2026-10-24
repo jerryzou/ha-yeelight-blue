@@ -1,0 +1,21 @@
+{
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "description": "Pick a Yeelight Blue II bulb in Bluetooth range.",
+        "data": {
+          "address": "Bulb"
+        }
+      },
+      "bluetooth_confirm": {
+        "description": "Set up {name}?"
+      }
+    },
+    "abort": {
+      "already_configured": "This bulb is already configured.",
+      "no_devices_found": "No unconfigured Yeelight Blue II bulbs in Bluetooth range.",
+      "already_in_progress": "Setup for this bulb is already in progress."
+    }
+  }
+}
