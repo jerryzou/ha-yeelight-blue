@@ -22,6 +22,7 @@ from .const import (
     IDLE_DISCONNECT_S,
     PAYLOAD_LEN,
     STATUS_TIMEOUT_S,
+    STOP_NOTIFY_TIMEOUT_S,
     WRITE_TIMEOUT_S,
 )
 
@@ -57,6 +58,20 @@ def _refused(err: Exception) -> bool:
     """The adapter rejected write-without-response, not a link problem."""
     msg = str(err).lower()
     return any(k in msg for k in ("not supported", "notsupported", "not permitted", "notpermitted"))
+
+
+async def _stop_notify(client: BleakClient) -> None:
+    """Unsubscribe before a deliberate disconnect.
+
+    Without it BlueZ appeared to keep every link's notify session: after a
+    night of polls over the local adapter each status reply arrived 40+
+    times, until bluetoothd crashed and restarted with a clean slate.
+    """
+    try:
+        async with asyncio.timeout(STOP_NOTIFY_TIMEOUT_S):
+            await client.stop_notify(CHAR_STATUS_NOTIFY)
+    except (BleakError, TimeoutError) as err:
+        _LOGGER.debug("stop_notify failed: %r", err)
 
 
 def _pad(cmd: str) -> bytes:
@@ -143,6 +158,7 @@ class YeelightBlue:
             self._idle_handle = None
         async with self._lock:
             if self._client and self._client.is_connected:
+                await _stop_notify(self._client)
                 await self._client.disconnect()
             self._client = None
 
@@ -185,6 +201,7 @@ class YeelightBlue:
     async def _drop_client(self) -> None:
         client, self._client = self._client, None
         if client and client.is_connected:
+            await _stop_notify(client)
             try:
                 await client.disconnect()
             except BleakError:

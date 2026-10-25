@@ -23,6 +23,7 @@ MAX_KELVIN = 6500
 # back-to-back automation steps don't reconnect each time, then free the slot.
 IDLE_DISCONNECT_S = 30
 STATUS_TIMEOUT_S = 3
+STOP_NOTIFY_TIMEOUT_S = 2
 # Generous: the bulb seems to answer a write only after its fade, and proxy links add latency.
 WRITE_TIMEOUT_S = 10
 POLL_INTERVAL_S = 300
