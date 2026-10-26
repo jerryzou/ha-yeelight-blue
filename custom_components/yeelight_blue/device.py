@@ -61,11 +61,13 @@ def _refused(err: Exception) -> bool:
 
 
 async def _stop_notify(client: BleakClient) -> None:
-    """Unsubscribe before a deliberate disconnect.
+    """End the subscription a status query opened.
 
-    Without it BlueZ appeared to keep every link's notify session: after a
-    night of polls over the local adapter each status reply arrived 40+
-    times, until bluetoothd crashed and restarted with a clean slate.
+    BlueZ keeps a notify session alive when the link drops while subscribed
+    (this bulb often drops a fresh link ~10 s in). Subscribing for the whole
+    link made every status reply arrive once more per drop, 46 copies after
+    a night of polls, until bluetoothd crashed. So stay subscribed only for
+    the second a query takes.
     """
     try:
         async with asyncio.timeout(STOP_NOTIFY_TIMEOUT_S):
@@ -125,7 +127,6 @@ class YeelightBlue:
             disconnected_callback=self._on_disconnect,
             max_attempts=3,
         )
-        await client.start_notify(CHAR_STATUS_NOTIFY, self._on_notify)
         self._client = client
         self.link_activity = time.monotonic()
         return client
@@ -158,7 +159,6 @@ class YeelightBlue:
             self._idle_handle = None
         async with self._lock:
             if self._client and self._client.is_connected:
-                await _stop_notify(self._client)
                 await self._client.disconnect()
             self._client = None
 
@@ -201,7 +201,6 @@ class YeelightBlue:
     async def _drop_client(self) -> None:
         client, self._client = self._client, None
         if client and client.is_connected:
-            await _stop_notify(client)
             try:
                 await client.disconnect()
             except BleakError:
@@ -221,14 +220,17 @@ class YeelightBlue:
         async with self._lock:
             client = await self._ensure_connected()
             self._status_future = self.hass.loop.create_future()
-            await client.write_gatt_char(CHAR_STATUS_QUERY, b"S", response=True)
             try:
+                await client.start_notify(CHAR_STATUS_NOTIFY, self._on_notify)
+                await client.write_gatt_char(CHAR_STATUS_QUERY, b"S", response=True)
                 raw = await asyncio.wait_for(self._status_future, STATUS_TIMEOUT_S)
             except TimeoutError:
                 _LOGGER.debug("%s: no status reply", self.address)
                 return None
             finally:
                 self._status_future = None
+                if client.is_connected:
+                    await _stop_notify(client)
                 self._schedule_idle_disconnect()
         state = parse_status(raw)
         if state is None:
